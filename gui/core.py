@@ -90,6 +90,7 @@ class Core:
     def start_connect(self, ip: str, port: int):
         if not self._begin("connecting", "正在连接..."):
             return {"ok": False, "error": "busy"}
+        self._stop_keepalive()
         self._update(ip=ip, port=int(port), files=[], device="")
         self.log(f"连接 {ip}:{port}")
         return self._thread(self._job_connect, ip, int(port))
@@ -98,6 +99,7 @@ class Core:
         """蓝牙发现 → 读热点凭据 → 自动连 Wi-Fi → 建链路。"""
         if not self._begin("pairing", "扫描附近的相机（蓝牙）…"):
             return {"ok": False, "error": "busy"}
+        self._stop_keepalive()
         self._update(ip=ip, port=int(port), files=[], device="")
         return self._thread(self._job_auto, ip, int(port))
 
@@ -125,26 +127,50 @@ class Core:
         except Exception:
             return ""
 
-    def _start_keepalive(self):
-        """下载期间每 2s 发一次 APP 心跳：相机 AP 空闲会休眠，长传输也更容易被掐。"""
+    def _start_session(self):
+        """维持相机侧会话（相机屏幕上的“App 已连接”就靠它）：
+
+        · 1 Hz 0x00/0x88 心跳
+        · 10 s 重申一次回放（0x01/0x01）
+        · 60 s 重新注册一次（相机 40–70 s 后不再接受写命令）
+        """
+        if getattr(self, "_ka_thread", None) and self._ka_thread.is_alive():
+            return
         self._ka_stop = threading.Event()
 
         def loop():
-            while not self._ka_stop.wait(2.0):
+            last_pb = 0.0
+            last_reg = time.time()
+            while not self._ka_stop.wait(1.0):
+                with self._lock:
+                    phase = self._state["phase"]
+                if phase not in ("idle", "downloading"):
+                    continue
                 cam = self._cam
                 if not cam:
                     continue
                 try:
                     cam.link.send_cmd(0x00, 0x88, lib.APP_PRESENCE, 0x08, 1)
+                    cam.link.recv(0.06)
+                    cam.link.ack()
+                    now = time.time()
+                    if now - last_pb > 10:
+                        cam.link.send_cmd(0x01, 0x01, lib.PB_STAGE2, 0x01, 0, cmd_type=0)
+                        last_pb = now
+                    if now - last_reg > 60:
+                        cam.register()
+                        last_reg = now
                 except Exception:
                     pass
 
-        threading.Thread(target=loop, daemon=True).start()
+        self._ka_thread = threading.Thread(target=loop, daemon=True)
+        self._ka_thread.start()
 
     def _stop_keepalive(self):
         ev = getattr(self, "_ka_stop", None)
         if ev:
             ev.set()
+        self._ka_thread = None
 
     def _close_cam(self):
         try:
@@ -207,6 +233,7 @@ class Core:
             files = self._fetch_files()
             self._update(files=files, phase="idle", message=f"已连接 · {len(files)} 个文件")
             self.log(f"自动连接完成：{len(files)} 个文件")
+            self._start_session()
         except Exception as e:
             self._fail(f"自动连接失败：{e}", e)
         finally:
@@ -222,6 +249,7 @@ class Core:
             self._update(files=files, phase="idle",
                          message=f"已连接 · {len(files)} 个文件")
             self.log(f"列表完成：{len(files)} 个文件")
+            self._start_session()
         except Exception as e:
             self._fail(f"连接失败：{e}", e)
         finally:
@@ -235,6 +263,7 @@ class Core:
                 self._update(connected=True, device=version or "相机")
             files = self._fetch_files()
             self._update(files=files, phase="idle", message=f"{len(files)} 个文件")
+            self._start_session()
         except Exception as e:
             self._fail(f"读取列表失败：{e}", e)
         finally:
@@ -251,7 +280,6 @@ class Core:
                 return
             os.makedirs(outdir, exist_ok=True)
             subnet = ip.rsplit(".", 1)[0] + "."
-            self._start_keepalive()
             ok = 0
             for k, f in enumerate(queue):
                 if self._cancel.is_set():
@@ -310,5 +338,4 @@ class Core:
         except Exception as e:
             self._fail(f"下载出错：{e}", e)
         finally:
-            self._stop_keepalive()
             self._end()
