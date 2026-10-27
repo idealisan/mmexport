@@ -5,7 +5,14 @@ import threading
 import time
 import traceback
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "demo"))
+if getattr(sys, "frozen", False):
+    ROOT = sys._MEIPASS                      # PyInstaller 解包目录
+    WEB_DIR = os.path.join(ROOT, "web")
+else:
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    WEB_DIR = os.path.join(ROOT, "gui", "web")
+
+sys.path.insert(0, os.path.join(ROOT, "demo"))
 import cam_download as lib  # noqa: E402
 import blepair  # noqa: E402
 import wifijoin  # noqa: E402

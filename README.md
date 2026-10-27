@@ -79,6 +79,20 @@ BLE 扫描（名字 Osmo…/Action… 或厂商字段）
 - 加入热点期间会断网；退出后手动切回常用 Wi-Fi。
 - 目前自动连热点只实现了 macOS（`networksetup`）；Windows/Linux 仍需手动连。
 
+## 打包成 macOS App
+
+```bash
+./build_macos.sh          # 需要本机有 Python 3 + Xcode CLT
+open dist/CameraExport.app
+```
+
+产物是 `dist/CameraExport.app`（约 24 MB，自带 Python 运行时，不依赖 .venv）。
+
+- 首次打开若提示“未验证的开发者”，右键 → 打开，或 `xattr -dr com.apple.quarantine`。
+- 已写入 `NSBluetoothAlwaysUsageDescription`，第一次用蓝牙会弹系统授权。
+- 打包后没有终端，诊断输出写到 `~/Library/Logs/CameraExport.log`。
+- 重新打包：改完代码直接再跑 `./build_macos.sh`（`build/`、`dist/` 已被 git 忽略）。
+
 ## 说明
 
 - 仅用于自己拥有的设备；连相机热点时电脑会断网，属正常现象。
