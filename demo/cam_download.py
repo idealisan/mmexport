@@ -611,13 +611,18 @@ def head_size(ip: str, store: int, path: str) -> int:
         return 0
 
 
-def download_file(ip: str, store: int, path: str, dest: str, retries: int = 8) -> bool:
+def download_file(ip: str, store: int, path: str, dest: str, retries: int = 8,
+                  progress=None, should_stop=None) -> bool:
+    """下载单个文件。progress(done, total) 用于 UI；should_stop() 返回 True 时中断（保留 .part 便于续传）。"""
+    quiet = progress is not None
     total = head_size(ip, store, path)
     part = dest + ".part"
     os.makedirs(os.path.dirname(os.path.abspath(dest)) or ".", exist_ok=True)
 
     barren = 0
     for attempt in range(1, retries + 1):
+        if should_stop and should_stop():
+            return False
         have = os.path.getsize(part) if os.path.exists(part) else 0
         if total and have >= total:
             break
@@ -633,23 +638,32 @@ def download_file(ip: str, store: int, path: str, dest: str, retries: int = 8) -
                 written = have
                 with open(part, mode) as f:
                     while True:
+                        if should_stop and should_stop():
+                            return False
                         block = r.read(1024 * 1024)
                         if not block:
                             break
                         f.write(block)
                         written += len(block)
                         barren = 0
-                        pct = (written * 100 / total) if total else 0
-                        print(f"\r  {os.path.basename(dest)}  {written/1048576:8.1f} MB"
-                              + (f" / {total/1048576:.1f} MB ({pct:5.1f}%)" if total else ""),
-                              end="", flush=True)
-            print()
+                        if progress:
+                            progress(written, total)
+                        elif not quiet:
+                            pct = (written * 100 / total) if total else 0
+                            print(f"\r  {os.path.basename(dest)}  {written/1048576:8.1f} MB"
+                                  + (f" / {total/1048576:.1f} MB ({pct:5.1f}%)" if total else ""),
+                                  end="", flush=True)
+            if not quiet:
+                print()
             if not total or os.path.getsize(part) >= total:
                 break
         except Exception as e:
             barren += 1
-            print(f"\n  ! 传输中断 ({e})，{0.75*barren:.2f}s 后续传")
+            if not quiet:
+                print(f"\n  ! 传输中断 ({e})，{0.75*barren:.2f}s 后续传")
             if barren >= 4:
+                return False
+            if should_stop and should_stop():
                 return False
             time.sleep(0.75 * barren)
 
@@ -657,10 +671,8 @@ def download_file(ip: str, store: int, path: str, dest: str, retries: int = 8) -
         return False
     size = os.path.getsize(part)
     if total and size < total:
-        print(f"  ! 未下载完整: {size}/{total}")
         return False
     os.replace(part, dest)
-    print(f"  ✓ {dest}  ({size/1048576:.1f} MB)")
     return True
 
 

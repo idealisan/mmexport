@@ -17,3 +17,6 @@ demo/videos/
 
 # 本地分析笔记，不公开
 ANALYSIS.md
+
+# Python venv
+.venv/

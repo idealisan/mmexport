@@ -35,6 +35,26 @@ python3 run_test.py        # 环境 → 握手 → 注册 → 回放 → 列表 
 
 更多细节见 `demo/README.md`（阶段含义与排错表）。
 
+## 图形界面
+
+pywebview 开一个本地窗口（macOS 上是 WKWebView），Python 侧跑协议与下载，界面负责选片、看进度。
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt      # 只有 pywebview
+.venv/bin/python gui/app.py
+```
+
+功能：连接/重连、刷新列表、全选/多选、选输出目录、逐个下载并显示速度与剩余时间、随时取消（保留 .part，下次续传）、运行日志。
+
+| 路径 | 说明 |
+|---|---|
+| `gui/app.py` | 窗口与 JS API |
+| `gui/core.py` | 后台任务线程与状态机（UI 每 400ms 轮询） |
+| `gui/web/index.html` | 界面（单文件，无前端依赖） |
+
+> 连接相机热点期间电脑没有外网，属正常现象。
+
 ## 说明
 
 - 仅用于自己拥有的设备；连相机热点时电脑会断网，属正常现象。
