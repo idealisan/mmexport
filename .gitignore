@@ -1,0 +1,19 @@
+# 本地解包产物（体积大，不入库）
+apk/
+*.apk
+ref/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# demo 运行产物
+demo/test-run-*/
+demo/videos/
+*.part
+
+# macOS
+.DS_Store
+
+# 本地分析笔记，不公开
+ANALYSIS.md
