@@ -7,6 +7,8 @@ import traceback
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "demo"))
 import cam_download as lib  # noqa: E402
+import blepair  # noqa: E402
+import wifijoin  # noqa: E402
 
 DEFAULT_OUT = os.path.expanduser("~/Movies/CameraExport")
 
@@ -85,6 +87,13 @@ class Core:
         self.log(f"连接 {ip}:{port}")
         return self._thread(self._job_connect, ip, int(port))
 
+    def start_auto(self, ip: str, port: int):
+        """蓝牙发现 → 读热点凭据 → 自动连 Wi-Fi → 建链路。"""
+        if not self._begin("pairing", "扫描附近的相机（蓝牙）…"):
+            return {"ok": False, "error": "busy"}
+        self._update(ip=ip, port=int(port), files=[], device="")
+        return self._thread(self._job_auto, ip, int(port))
+
     def start_refresh(self):
         if not self._begin("listing", "读取文件列表..."):
             return {"ok": False, "error": "busy"}
@@ -137,6 +146,36 @@ class Core:
             if i % 10 == 0:
                 self._update(message=f"读取文件信息 {i + 1}/{len(files)}")
         return out
+
+    def _job_auto(self, ip, port):
+        try:
+            info = blepair.discover_and_pair(log=self.log)
+            self._update(message=f"{info['name']} · 正在连接热点…")
+            ok, detail = wifijoin.join(info["ssid"], info["password"], log=self.log)
+            if not ok:
+                raise RuntimeError(f"加入热点失败：{detail}")
+            self._update(message="已加入热点，建立数据链路…", connected=False)
+            version = None
+            last = None
+            for _ in range(3):
+                try:
+                    version = self._ensure_cam()
+                    break
+                except Exception as e:
+                    last = e
+                    self.log(f"建链失败，重试: {e}")
+                    time.sleep(2)
+            if version is None:
+                raise last or RuntimeError("建链失败")
+            self._update(connected=True,
+                         device=version.replace("\x00", " | ") if version else "相机")
+            files = self._fetch_files()
+            self._update(files=files, phase="idle", message=f"已连接 · {len(files)} 个文件")
+            self.log(f"自动连接完成：{len(files)} 个文件")
+        except Exception as e:
+            self._fail(f"自动连接失败：{e}", e)
+        finally:
+            self._end()
 
     def _job_connect(self, ip, port):
         try:

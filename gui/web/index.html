@@ -110,6 +110,7 @@
     <label>端口</label>
     <input id="port" class="port" value="9004" spellcheck="false">
   </div>
+  <button id="btnAuto" class="ghost" title="用蓝牙读取相机热点名和密码，并自动加入该热点（macOS）">蓝牙自动连接</button>
   <button id="btnConnect" class="primary">连接</button>
   <button id="btnRefresh" class="ghost" disabled>刷新列表</button>
   <span id="device" class="sub"></span>
@@ -189,13 +190,14 @@ async function call(name, ...args){
 }
 
 function render(s){
-  const busy = ["connecting","listing","downloading"].includes(s.phase);
+  const busy = ["connecting","pairing","listing","downloading"].includes(s.phase);
   const pill = $("pill");
   pill.className = "pill" + (s.phase === "error" ? " err" : busy ? " busy" : s.connected ? " ok" : "");
   $("pillText").textContent = s.message || "未连接";
   $("device").textContent = s.device ? s.device.replace(/\s*\|\s*/g, " · ") : "";
   $("btnConnect").textContent = s.connected ? "重新连接" : "连接";
   $("btnConnect").disabled = busy;
+  $("btnAuto").disabled = busy;
   $("btnRefresh").disabled = busy || !s.connected;
   $("btnDir").disabled = busy;
   $("btnOpenDir").disabled = !s.outdir;
@@ -274,6 +276,7 @@ $("selAll").addEventListener("change", (e) => {
 });
 
 $("btnConnect").addEventListener("click", () => call("connect", $("ip").value.trim(), Number($("port").value) || 9004));
+$("btnAuto").addEventListener("click", () => call("auto_connect", $("ip").value.trim(), Number($("port").value) || 9004));
 $("btnRefresh").addEventListener("click", () => call("refresh"));
 $("btnDownload").addEventListener("click", () => {
   const idx = files.filter(f => selected.has(f.path)).map(f => f.idx);

@@ -28,6 +28,9 @@ class Api:
     def connect(self, ip, port):
         return self.core.start_connect(ip, int(port))
 
+    def auto_connect(self, ip, port):
+        return self.core.start_auto(ip, int(port))
+
     def refresh(self):
         return self.core.start_refresh()
 

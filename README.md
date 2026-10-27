@@ -55,6 +55,30 @@ python3 -m venv .venv
 
 > 连接相机热点期间电脑没有外网，属正常现象。
 
+## 自动连接（蓝牙）
+
+界面上的「蓝牙自动连接」会做完整链路，不需要手动连热点：
+
+```
+BLE 扫描（名字 Osmo…/Action… 或厂商字段） 
+  → 连接 GATT 服务 fff0，写 fff5、订阅 fff4，向 fff4 写 01 00 武装配对
+  → 0x07/0x45 SetPairingPIN(identifier, token)
+       ├─ 回 00 01：之前配对过，直接过
+       └─ 回 00 02：相机屏幕显示配对码，用户按确认 → 相机发 0x07/0x46，App 回 ACK
+  → 0x07/0x07 / 0x07/0x0e 读热点 SSID 和密码（两条间隔 ~500ms）
+  → 断开 BLE，用 networksetup 加入该热点，等 192.168.2.x
+  → 进入原有的 UDP 链路流程
+```
+
+原版客户端也是这套：BLE 只做配对和发凭据，真正的数据全走 Wi-Fi（Android 用 `WifiNetworkSpecifier` + `bindProcessToNetwork`，iOS 用 `NEHotspotConfiguration`）。
+
+注意：
+
+- 需要系统蓝牙权限（系统设置 → 隐私与安全性 → 蓝牙，允许终端/iTerm）。
+- 首次配对要在相机屏幕上确认；配对记录按 App 标识存在相机里，后续可直连。
+- 加入热点期间会断网；退出后手动切回常用 Wi-Fi。
+- 目前自动连热点只实现了 macOS（`networksetup`）；Windows/Linux 仍需手动连。
+
 ## 说明
 
 - 仅用于自己拥有的设备；连相机热点时电脑会断网，属正常现象。
