@@ -118,6 +118,34 @@ class Core:
         return {"ok": True}
 
     # ---------- internals ----------
+    def _wifi_ip(self):
+        try:
+            dev = wifijoin.wifi_device()
+            return wifijoin.ip_of(dev) if dev else ""
+        except Exception:
+            return ""
+
+    def _start_keepalive(self):
+        """下载期间每 2s 发一次 APP 心跳：相机 AP 空闲会休眠，长传输也更容易被掐。"""
+        self._ka_stop = threading.Event()
+
+        def loop():
+            while not self._ka_stop.wait(2.0):
+                cam = self._cam
+                if not cam:
+                    continue
+                try:
+                    cam.link.send_cmd(0x00, 0x88, lib.APP_PRESENCE, 0x08, 1)
+                except Exception:
+                    pass
+
+        threading.Thread(target=loop, daemon=True).start()
+
+    def _stop_keepalive(self):
+        ev = getattr(self, "_ka_stop", None)
+        if ev:
+            ev.set()
+
     def _close_cam(self):
         try:
             if self._cam:
@@ -222,10 +250,15 @@ class Core:
                 self._update(phase="idle", message="没有选中的文件")
                 return
             os.makedirs(outdir, exist_ok=True)
+            subnet = ip.rsplit(".", 1)[0] + "."
+            self._start_keepalive()
             ok = 0
             for k, f in enumerate(queue):
                 if self._cancel.is_set():
                     break
+                now_ip = self._wifi_ip()
+                if now_ip and not now_ip.startswith(subnet):
+                    raise RuntimeError(f"电脑已离开相机热点（当前 {now_ip}），请重连后点下载继续（会续传）")
                 dest = os.path.join(outdir, f["name"])
                 if os.path.exists(dest) and (not f["size"] or os.path.getsize(dest) == f["size"]):
                     self.log(f"跳过（已存在）{f['name']}")
@@ -245,8 +278,24 @@ class Core:
                         self._set_progress(done=done, total=total or _f["size"], speed=speed,
                                            name=_f["name"], index=_k + 1, count=len(queue))
 
+                last_log = {"mb": -1}
+                def on_retry(done, err, _f=f):
+                    self.log(f"{_f['name']} 中断于 {done/1048576:.1f} MB（{err[:60]}），正在续传")
+                    cur = self._wifi_ip()
+                    if cur and not cur.startswith(subnet):
+                        self.log(f"网络已切走（{cur}），停止下载")
+                        self._cancel.set()
+
+                def progress2(done, total, _f=f):
+                    progress(done, total)
+                    mb = int(done / (16 * 1048576))
+                    if mb != last_log["mb"]:
+                        last_log["mb"] = mb
+                        self.log(f"{_f['name']} {done/1048576:.1f} MB")
+
                 got = lib.download_file(ip, f["store"], f["path"], dest,
-                                        progress=progress, should_stop=self._cancel.is_set)
+                                        progress=progress2, should_stop=self._cancel.is_set,
+                                        on_retry=on_retry)
                 if got:
                     ok += 1
                     self.log(f"完成 {f['name']}")
@@ -261,4 +310,5 @@ class Core:
         except Exception as e:
             self._fail(f"下载出错：{e}", e)
         finally:
+            self._stop_keepalive()
             self._end()

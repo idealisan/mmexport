@@ -33,7 +33,7 @@ class _Buf:
 
     def feed(self, chunk: bytes):
         self.data += chunk
-        out = list(lib.iter_frames(self.data))
+        out = list(lib.iter_build_frames(self.data))
         # 丢掉已解析的字节：保留最后一个 SOF 之后的内容
         idx = self.data.rfind(b"\x55")
         self.data = self.data[idx:] if idx >= 0 else b""

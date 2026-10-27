@@ -611,8 +611,8 @@ def head_size(ip: str, store: int, path: str) -> int:
         return 0
 
 
-def download_file(ip: str, store: int, path: str, dest: str, retries: int = 8,
-                  progress=None, should_stop=None) -> bool:
+def download_file(ip: str, store: int, path: str, dest: str, retries: int = 12,
+                  progress=None, should_stop=None, on_retry=None) -> bool:
     """下载单个文件。progress(done, total) 用于 UI；should_stop() 返回 True 时中断（保留 .part 便于续传）。"""
     quiet = progress is not None
     total = head_size(ip, store, path)
@@ -628,7 +628,7 @@ def download_file(ip: str, store: int, path: str, dest: str, retries: int = 8,
             break
         try:
             req = http_headers(ip, store, path, "GET", range_from=have)
-            with http_open(req, timeout=20) as r:
+            with http_open(req, timeout=12) as r:
                 code = r.getcode()
                 if have > 0 and code != 206:
                     # 相机忽略了 Range：只能从头来
@@ -659,9 +659,12 @@ def download_file(ip: str, store: int, path: str, dest: str, retries: int = 8,
                 break
         except Exception as e:
             barren += 1
+            left = os.path.getsize(part) if os.path.exists(part) else 0
+            if on_retry:
+                on_retry(left, str(e))
             if not quiet:
-                print(f"\n  ! 传输中断 ({e})，{0.75*barren:.2f}s 后续传")
-            if barren >= 4:
+                print(f"\n  ! 传输中断 ({e})，已收 {left/1048576:.1f} MB，{0.75*barren:.2f}s 后续传")
+            if barren >= 6:
                 return False
             if should_stop and should_stop():
                 return False

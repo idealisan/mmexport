@@ -73,6 +73,15 @@ def _setup_log():
 
 def main():
     _setup_log()
+    if "--ble-test" in sys.argv:
+        import blepair
+        print("[ble-test] 开始扫描（5s）", flush=True)
+        try:
+            print("[ble-test] OK " + str(blepair.discover_and_pair(log=print, timeout=5, approve_timeout=5)), flush=True)
+        except Exception as e:
+            print(f"[ble-test] ERR {type(e).__name__}: {e}", flush=True)
+        return
+
     core = Core()
     api = Api(core)
     window = webview.create_window(
