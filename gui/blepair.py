@@ -49,6 +49,8 @@ async def _scan(timeout=8.0):
 
     found = await BleakScanner.discover(timeout=timeout, return_adv=True)
     cands = []
+    if not found:
+        print("（附近没有蓝牙设备，检查蓝牙是否开启）", flush=True)
     for addr, (dev, adv) in found.items():
         name = adv.local_name or dev.name or ""
         mfr = adv.manufacturer_data or {}
@@ -137,7 +139,7 @@ async def _pair_and_read(dev, log, timeout_approve=60.0):
         return {"ssid": ssid, "password": pwd or ""}
 
 
-def discover_and_pair(log=print, timeout=8.0, approve_timeout=60.0):
+def discover_and_pair(log=print, timeout=10.0, approve_timeout=60.0):
     """同步入口：扫描 + 配对 + 读凭据。返回 {'ssid','password','name'}。"""
     try:
         import bleak  # noqa: F401
@@ -147,7 +149,8 @@ def discover_and_pair(log=print, timeout=8.0, approve_timeout=60.0):
     async def run():
         log("扫描附近相机（蓝牙）…")
         try:
-            cands = await asyncio.wait_for(_scan(timeout), timeout=timeout + 6)
+            # 首次扫描要先等系统授权，给足时间
+            cands = await asyncio.wait_for(_scan(timeout), timeout=timeout + 45)
         except asyncio.TimeoutError:
             raise BleError("蓝牙扫描超时：到「系统设置 → 隐私与安全性 → 蓝牙」允许终端使用蓝牙，并确认相机蓝牙已开")
         if not cands:
@@ -168,7 +171,7 @@ def discover_and_pair(log=print, timeout=8.0, approve_timeout=60.0):
 
     t = threading.Thread(target=runner, daemon=True)
     t.start()
-    t.join(timeout + approve_timeout + 45)
+    t.join(timeout + approve_timeout + 100)
     if t.is_alive():
         raise BleError("蓝牙无响应：到「系统设置 → 隐私与安全性 → 蓝牙」允许终端使用蓝牙，再试一次")
     if "e" in box:
